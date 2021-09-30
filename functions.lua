@@ -1,25 +1,6 @@
 
 local S = technical_drawings.translator
 
-local drawing_on_place = nil;
-local drawing_on_use = nil;
-
-if minetest.get_modpath("painting") then
-  drawing_on_place = function(itemstack, player, pointed_thing)
-    end
-  drawing_on_use = function(itemstack, player, pointed_thing)
-    end
-end
-
-function technical_drawings.register_drawing_item(drawing_name, drawing_data)
-  minetest.register_tool(":technical_drawings:"..drawing_name, {
-      description = S("Technical Drawing").." - "..drawing_data.description,
-      inventory_image = drawing_data.inventory_image,
-      groups = {technical_drawings = 1},
-      _technical_drawings_name = drawing_name,
-    })
-end
-
 local drawing_index_move = 8;
 if minetest.get_modpath("hades_core") then
   drawing_index_move = 10;
@@ -31,20 +12,20 @@ function technical_drawings.tool_on_use(itemstack, user, pointed_thing)
   end
   local item_def = itemstack:get_definition();
   local tool = item_def._technical_drawings_tool;
-  print(dump(tool))
+  --print(dump(tool))
   if tool then
     local inv = user:get_inventory()
     local drawing_item = inv:get_stack("main", user:get_wield_index()+drawing_index_move);
     local drawing_def = drawing_item:get_definition();
     local node = minetest.get_node(pointed_thing.under);
-    print(drawing_def._technical_drawings_name)
+    --print(drawing_def._technical_drawings_name)
     local recipe_data = technical_drawings.get_recipe(drawing_def._technical_drawings_name, tool.category_name, node.name);
-    print(dump(recipe_data))
+    --print(dump(recipe_data))
     if recipe_data then
       local node_meta = minetest.get_meta(pointed_thing.under);
       local timestamp = node_meta:get_int("timestamp");
       local gametime = minetest:get_gametime();
-      print(gametime);
+      --print(gametime);
       if ((gametime-timestamp)<tool.interval) then
         return itemstack;
       end
@@ -61,7 +42,7 @@ function technical_drawings.tool_on_use(itemstack, user, pointed_thing)
       else
         node_meta:set_int("timestamp", gametime);
         node_meta:set_int("points_done", done);
-        print("done: "..done)
+        --print("done: "..done)
         local percent = math.floor((100*done)/recipe_data.work_points);
         local hud_image = "technical_drawings_progress_bar.png^[lowpart:"..percent..":technical_drawings_progress_bar_full.png^[transformR270]]"
         local hud = user:hud_add({
@@ -85,14 +66,10 @@ end
 local function drawings_diff_core(A, B)
   local ratio = A.res/B.res;
   local check = math.modf(ratio);
-  if check~=ratio then
-    -- only integer multiples resolutions can be compared
-    --return A.res*B.res;
-    --return 1;
-  end
   
   -- palette conjuction table
   local conjuction = {};
+  local valid_points = 0;
   
   -- same size drawing
   --   statistic comparation for palette conjuction point to point
@@ -123,6 +100,7 @@ local function drawings_diff_core(A, B)
           conjA.conj[pB] = 1;
         end--]]
         conjA.conj[pB] = (conjA.conj[pB] or 0) + 1;
+        valid_points = valid_points + 1;
       end
     end
   end
@@ -149,14 +127,21 @@ local function drawings_diff_core(A, B)
   for y=1,A.res do
     local lineA = A.grid[y];
     for x=1,A.res do
+      local pA = lineA[x];
       local pB = B.grid[math.ceil(y/ratio)][math.ceil(x/ratio)];
-      if (lineA[x]~=pB) then
-        diff = diff + 1;
+      if (pA~=0) and (pB~=0) then -- ignore DO NOT MATTER palette indexes
+        if (convertion[pA]~=pB) then
+          diff = diff + 1;
+        end
       end
     end
   end
   
-  return diff/(A.res*A.res);
+  --return diff;
+  return diff/valid_points;
+  --return (diff/valid_points)*(A.res/B.res);
+  --return diff/(A.res*A.res);
+  --return (((diff/valid_points)+(diff/(A.res*A.res)))/2);
 end
 
 function technical_drawings.drawings_diff(A, B)
@@ -168,11 +153,10 @@ function technical_drawings.drawings_diff(A, B)
 end
 
 local function HexToRGB(hex)
-  color = tonumber(hex, 16);
   return {
-      r = (color>>16)&255,
-      g = (color>>8)&255,
-      b = color&255,
+      r = tonumber(string.sub(hex, 1, 2), 16),
+      g = tonumber(string.sub(hex, 3, 4), 16),
+      b = tonumber(string.sub(hex, 5, 6), 16),
     }
 end
 local function RGBToHex(color)
@@ -231,4 +215,27 @@ function technical_drawings.drawing_to_palette(drawing, max_colors_diff)
     }
 end
 
+function technical_drawings.find_best_drawing_math(drawing)
+  local best_math = 1
+  local best_name = nil
+  for drawing_name, drawing_data in pairs(technical_drawings.drawings) do
+    local diff = technical_drawings.drawings_diff(drawing, drawing_data.drawing)
+    if (diff<best_math) then
+      best_math = diff
+      best_name = drawing_name
+    end
+    --print(drawing_name..": "..diff)
+  end
+  if best_name then
+    local stack = ItemStack("technical_drawings:"..best_name)
+    local meta = stack:get_meta()
+    local def = stack:get_definition()
+    local quality = (1/(1+best_math))^4
+    meta:set_float("quality", quality)
+    meta:set_string("drawing", best_name)
+    meta:set_string("description", def.description.."\n"..S("Quality: ")..math.floor(quality*100).."%")
+    return stack
+  end
+  return nil
+end
 
