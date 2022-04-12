@@ -94,10 +94,7 @@ drawing_table:register_nodes(node_def, node_inactive, node_active)
 -- Recipe Registration --
 -------------------------
 
-local function technical_drawing_output(self, timer_step)
-  if (timer_step.production_time<5) then
-    return "technical_drawings:empty_drawing"
-  end
+local function technical_drawing_on_done(self, timer_step, outputs)
   local input_stack = timer_step.inv:get_stack(self.input_stack, 1)
   local input_meta = input_stack:get_meta()
   local canvas = {
@@ -141,9 +138,10 @@ drawing_table:recipe_register_input(
 	"painting:paintedcanvas",
 	{
 		inputs = 1,
-		outputs = {technical_drawing_output},
+		outputs = {"technical_drawings:empty_drawing"},
 		production_time = 5, -- 60
 		production_step_size = 1,
+    on_done = technical_drawing_on_done,
 	});
 
 -- no recipe registration
